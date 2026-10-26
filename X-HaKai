@@ -1,0 +1,285 @@
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/hakaiofc/Base/main/HUBORION"))()
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+local Window = OrionLib:MakeWindow({
+    Name = "X-HaKai OFC",
+    HidePremium = false,
+    SaveConfig = true,
+    ConfigFolder = "HaKaiOFC",
+    IntroEnabled = false
+})
+
+local Configuracoes = {
+    DoubleReg = { Ativo = false, INTERVAL = 0.002, CALLS_PER_TICK = 2 },
+    JumpKick  = { Ativo = false, INTERVAL = 0.4, CALLS_PER_TICK = 50 },
+    Dumbell   = { Ativo = false, INTERVAL = 0.002, CALLS_PER_TICK = 1 },
+    Bench     = { Ativo = false, INTERVAL = 0.35, CALLS_PER_TICK = 85 },
+    PushUp    = { Ativo = false, INTERVAL = 0.4, CALLS_PER_TICK = 1 },
+    SitUp     = { Ativo = false, INTERVAL = 0.002, CALLS_PER_TICK = 1 }
+}
+
+local RemotesCache = {}
+local Tarefas = {}
+local Toggles = {}
+local AntiAFKConnection
+local RenderOriginal
+
+local function PegarRemote(nome)
+    local cache = RemotesCache[nome]
+
+    if cache and cache.Parent then
+        return cache
+    end
+
+    local pasta = ReplicatedStorage:FindFirstChild("Remotes")
+    local remote = pasta and pasta:FindFirstChild(nome)
+
+    RemotesCache[nome] = remote
+    return remote
+end
+
+local Acoes = {
+    DoubleReg = function(remote)
+        remote:FireServer()
+    end,
+
+    JumpKick = function(remote)
+        remote:FireServer()
+    end,
+
+    Dumbell = function(remote)
+        remote:FireServer("Rep", 3)
+    end,
+
+    Bench = function(remote)
+        remote:FireServer()
+    end,
+
+    PushUp = function(remote)
+        remote:FireServer()
+    end,
+
+    SitUp = function(remote)
+        remote:FireServer()
+    end
+}
+
+local function Parar(nome)
+    local config = Configuracoes[nome]
+    local tarefa = Tarefas[nome]
+
+    if config then
+        config.Ativo = false
+    end
+
+    if tarefa then
+        tarefa.Ativa = false
+        Tarefas[nome] = nil
+    end
+end
+
+local function Iniciar(nome)
+    local config = Configuracoes[nome]
+    local acao = Acoes[nome]
+
+    if not config or not acao or Tarefas[nome] then
+        return
+    end
+
+    local remote = PegarRemote(nome)
+
+    if not remote or not remote:IsA("RemoteEvent") then
+        OrionLib:MakeNotification({
+            Name = "X-HaKai OFC",
+            Content = "Remote '" .. nome .. "' não encontrado.",
+            Time = 5
+        })
+
+        if Toggles[nome] then
+            Toggles[nome]:Set(false)
+        end
+
+        return
+    end
+
+    config.Ativo = true
+
+    local tarefa = { Ativa = true }
+    Tarefas[nome] = tarefa
+
+    task.spawn(function()
+        while tarefa.Ativa and config.Ativo do
+            local sucesso, erro = pcall(function()
+                for _ = 1, config.CALLS_PER_TICK do
+                    if not tarefa.Ativa or not config.Ativo then
+                        break
+                    end
+
+                    acao(remote)
+                end
+            end)
+
+            if not sucesso then
+                warn("[X-HaKai OFC] " .. nome .. ": " .. tostring(erro))
+                break
+            end
+
+            task.wait(math.max(config.INTERVAL, 0.05))
+        end
+
+        tarefa.Ativa = false
+
+        if Tarefas[nome] == tarefa then
+            Tarefas[nome] = nil
+            config.Ativo = false
+
+            if Toggles[nome] then
+                Toggles[nome]:Set(false)
+            end
+        end
+    end)
+end
+
+local function CriarToggle(tab, nome)
+    Toggles[nome] = tab:AddToggle({
+        Name = nome,
+        Default = false,
+
+        Callback = function(valor)
+            if valor then
+                Iniciar(nome)
+            else
+                Parar(nome)
+            end
+        end
+    })
+
+    tab:AddTextbox({
+        Name = nome .. " - Intervalo (segundos)",
+        Default = tostring(Configuracoes[nome].INTERVAL),
+        TextDisappear = false,
+
+        Callback = function(texto)
+            local numero = tonumber(texto)
+
+            if numero and numero == numero
+                and numero >= 0
+                and numero < math.huge then
+
+                Configuracoes[nome].INTERVAL = numero
+            end
+        end
+    })
+
+    tab:AddTextbox({
+        Name = nome .. " - Ações por ciclo",
+        Default = tostring(Configuracoes[nome].CALLS_PER_TICK),
+        TextDisappear = false,
+
+        Callback = function(texto)
+            local numero = tonumber(texto)
+
+            if numero and numero == numero
+                and numero >= 1
+                and numero < math.huge then
+
+                Configuracoes[nome].CALLS_PER_TICK = math.clamp(
+                    math.floor(numero),
+                    1,
+                    999
+                )
+            end
+        end
+    })
+end
+
+local ForcaTab = Window:MakeTab({
+    Name = "Força",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+ForcaTab:AddSection({
+    Name = "Farm de Força"
+})
+
+CriarToggle(ForcaTab, "DoubleReg")
+CriarToggle(ForcaTab, "JumpKick")
+CriarToggle(ForcaTab, "Dumbell")
+
+local VidaTab = Window:MakeTab({
+    Name = "Vida",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+VidaTab:AddSection({
+    Name = "Farm de Vida"
+})
+
+CriarToggle(VidaTab, "Bench")
+CriarToggle(VidaTab, "PushUp")
+CriarToggle(VidaTab, "SitUp")
+
+local ConfigTab = Window:MakeTab({
+    Name = "Configurações",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+ConfigTab:AddSection({
+    Name = "Otimização"
+})
+
+ConfigTab:AddToggle({
+    Name = "Anti-AFK",
+    Default = false,
+
+    Callback = function(valor)
+        if valor then
+            if AntiAFKConnection then
+                AntiAFKConnection:Disconnect()
+                AntiAFKConnection = nil
+            end
+
+            AntiAFKConnection = LocalPlayer.Idled:Connect(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new(0, 0))
+            end)
+        else
+            if AntiAFKConnection then
+                AntiAFKConnection:Disconnect()
+                AntiAFKConnection = nil
+            end
+        end
+    end
+})
+
+ConfigTab:AddToggle({
+    Name = "Render 01",
+    Default = false,
+
+    Callback = function(valor)
+        pcall(function()
+            if valor then
+                if RenderOriginal == nil then
+                    RenderOriginal = settings().Rendering.QualityLevel
+                end
+
+                settings().Rendering.QualityLevel =
+                    Enum.QualityLevel.Level01
+            else
+                if RenderOriginal ~= nil then
+                    settings().Rendering.QualityLevel = RenderOriginal
+                    RenderOriginal = nil
+                end
+            end
+        end)
+    end
+})
+
+OrionLib:Init()
